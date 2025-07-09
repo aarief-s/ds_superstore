@@ -11,42 +11,35 @@ warnings.filterwarnings('ignore')
 st.set_page_config(
     page_title="Superstore Analytics Dashboard",
     page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-.main-header {
-    font-size: 2.5rem;
-    color: #1f77b4;
-    text-align: center;
-    margin-bottom: 30px;
-}
-.metric-card {
-    background-color: #f0f2f6;
-    padding: 20px;
-    border-radius: 10px;
-    margin: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Fungsi untuk memuat data
 @st.cache_data
-def load_and_process_data():
+def load_and_process_data(uploaded_file=None):
     """Load dan proses data superstore"""
     try:
-        # Baca data
-        df = pd.read_csv('superstore.csv', encoding='iso-8859-1')
+        # Jika ada file upload, gunakan itu
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file, encoding='iso-8859-1')
+        else:
+            # Coba berbagai nama file yang mungkin
+            try:
+                df = pd.read_csv('superstore.csv', encoding='iso-8859-1')
+            except:
+                try:
+                    df = pd.read_csv('superstore.csv', encoding='utf-8')
+                except:
+                    try:
+                        df = pd.read_csv('sample_data/superstore.csv', encoding='iso-8859-1')
+                    except:
+                        return None
         
-        # Basic cleaning
+        # Data cleaning dan processing
         df['Order.Date'] = pd.to_datetime(df['Order.Date'])
         df['Ship.Date'] = pd.to_datetime(df['Ship.Date'])
         df = df.drop_duplicates()
         
-        # Feature engineering basic
+        # Feature engineering
         df['Year'] = df['Order.Date'].dt.year
         df['Month'] = df['Order.Date'].dt.month
         df['Quarter'] = df['Order.Date'].dt.quarter
@@ -92,8 +85,37 @@ def load_and_process_data():
         return df
         
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"Error loading data: {str(e)}")
         return None
+
+def create_sample_data():
+    """Buat sample data jika file tidak tersedia"""
+    np.random.seed(42)
+    
+    # Generate sample data
+    n_rows = 1000
+    
+    data = {
+        'Order.Date': pd.date_range('2021-01-01', '2024-12-31', periods=n_rows),
+        'Ship.Date': pd.date_range('2021-01-01', '2024-12-31', periods=n_rows),
+        'Category': np.random.choice(['Technology', 'Furniture', 'Office Supplies'], n_rows),
+        'Sub.Category': np.random.choice(['Phones', 'Chairs', 'Storage', 'Tables', 'Accessories'], n_rows),
+        'Product.Name': [f'Product_{i}' for i in range(n_rows)],
+        'Sales': np.random.uniform(10, 10000, n_rows),
+        'Quantity': np.random.randint(1, 10, n_rows),
+        'Discount': np.random.uniform(0, 0.8, n_rows),
+        'Profit': np.random.uniform(-1000, 3000, n_rows),
+        'Customer.ID': [f'CU-{i:05d}' for i in np.random.randint(1, 100, n_rows)],
+        'Customer.Name': [f'Customer_{i}' for i in np.random.randint(1, 100, n_rows)],
+        'Segment': np.random.choice(['Consumer', 'Corporate', 'Home Office'], n_rows),
+        'Region': np.random.choice(['East', 'West', 'Central', 'South'], n_rows),
+        'State': np.random.choice(['California', 'New York', 'Texas', 'Florida'], n_rows),
+        'Ship.Mode': np.random.choice(['Standard Class', 'Second Class', 'First Class', 'Same Day'], n_rows),
+        'Order.ID': [f'CA-{i:05d}' for i in range(n_rows)],
+        'Product.ID': [f'TEC-{i:05d}' for i in range(n_rows)]
+    }
+    
+    return pd.DataFrame(data)
 
 def show_overview(df):
     """Halaman overview"""
@@ -155,61 +177,70 @@ def show_overview(df):
             title="🌍 Sales by Region"
         )
         st.plotly_chart(fig, use_container_width=True)
+    
+    # Monthly trend
+    st.subheader("📈 Monthly Sales Trend")
+    monthly_sales = df.groupby(df['Order.Date'].dt.to_period('M'))['Sales'].sum()
+    fig = px.line(
+        x=monthly_sales.index.astype(str),
+        y=monthly_sales.values,
+        title="Monthly Sales Trend"
+    )
+    fig.update_layout(xaxis_title="Month", yaxis_title="Sales ($)")
+    st.plotly_chart(fig, use_container_width=True)
 
 def show_sales_analysis(df):
     """Halaman analisis sales"""
     st.header("📊 Sales Analysis")
     
-    # Time series analysis
-    st.subheader("⏰ Time Series Analysis")
-    
-    time_granularity = st.selectbox("Select time granularity", ["Daily", "Weekly", "Monthly", "Quarterly"])
-    
-    if time_granularity == "Daily":
-        time_series = df.groupby(df['Order.Date'].dt.date)['Sales'].sum()
-        x_title = "Date"
-    elif time_granularity == "Weekly":
-        time_series = df.groupby(df['Order.Date'].dt.to_period('W'))['Sales'].sum()
-        x_title = "Week"
-    elif time_granularity == "Monthly":
-        time_series = df.groupby(df['Order.Date'].dt.to_period('M'))['Sales'].sum()
-        x_title = "Month"
-    else:  # Quarterly
-        time_series = df.groupby(df['Order.Date'].dt.to_period('Q'))['Sales'].sum()
-        x_title = "Quarter"
-    
-    fig = px.line(
-        x=time_series.index.astype(str),
-        y=time_series.values,
-        title=f"{time_granularity} Sales Trend"
-    )
-    fig.update_layout(xaxis_title=x_title, yaxis_title="Sales ($)")
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # Seasonal and day analysis
     col1, col2 = st.columns(2)
     
     with col1:
+        # Top products
+        top_products = df.groupby('Product.Name')['Sales'].sum().sort_values(ascending=False).head(10)
+        fig = px.bar(
+            x=top_products.values,
+            y=top_products.index,
+            orientation='h',
+            title="🏆 Top 10 Products by Sales"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Seasonal analysis
         seasonal_sales = df.groupby('Season')['Sales'].sum()
         fig = px.bar(
             x=seasonal_sales.index,
             y=seasonal_sales.values,
-            title="🌸 Seasonal Sales",
+            title="🌸 Seasonal Sales Distribution",
             color=seasonal_sales.values,
             color_continuous_scale="Viridis"
         )
         st.plotly_chart(fig, use_container_width=True)
     
-    with col2:
-        day_sales = df.groupby('DayName')['Sales'].sum()
-        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        day_sales = day_sales.reindex(day_order)
+    # Discount analysis
+    st.subheader("🎯 Discount Analysis")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        discount_sales = df.groupby('Discount_Category')['Sales'].mean()
         fig = px.bar(
-            x=day_sales.index,
-            y=day_sales.values,
-            title="📅 Sales by Day of Week",
-            color=day_sales.values,
-            color_continuous_scale="Plasma"
+            x=discount_sales.index,
+            y=discount_sales.values,
+            title="📊 Average Sales by Discount Category",
+            color=discount_sales.values,
+            color_continuous_scale="Reds"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        fig = px.scatter(
+            df.sample(500),  # Sample untuk performance
+            x='Discount',
+            y='Sales',
+            color='Category',
+            title="🔍 Discount vs Sales Correlation"
         )
         st.plotly_chart(fig, use_container_width=True)
 
@@ -217,7 +248,6 @@ def show_customer_analysis(df):
     """Halaman analisis customer"""
     st.header("🎯 Customer Analysis")
     
-    # Customer metrics
     col1, col2 = st.columns(2)
     
     with col1:
@@ -246,147 +276,93 @@ def show_customer_analysis(df):
         )
         st.plotly_chart(fig, use_container_width=True)
     
-    # Customer behavior
-    st.subheader("📊 Customer Behavior Analysis")
+    # Customer behavior table
+    st.subheader("📊 Customer Segment Analysis")
+    segment_analysis = df.groupby('Segment').agg({
+        'Sales': ['sum', 'mean', 'count'],
+        'Profit': ['sum', 'mean'],
+        'Customer.ID': 'nunique'
+    }).round(2)
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Order size distribution
-        order_size_counts = df['Order_Size'].value_counts()
-        fig = px.bar(
-            x=order_size_counts.index,
-            y=order_size_counts.values,
-            title="📦 Order Size Distribution",
-            color=order_size_counts.values,
-            color_continuous_scale="Blues"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Discount impact
-        discount_impact = df.groupby('Discount_Category')['Sales'].mean()
-        fig = px.bar(
-            x=discount_impact.index,
-            y=discount_impact.values,
-            title="🎯 Average Sales by Discount Category",
-            color=discount_impact.values,
-            color_continuous_scale="Reds"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-def show_product_analysis(df):
-    """Halaman analisis produk"""
-    st.header("🛍️ Product Analysis")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Top products
-        top_products = df.groupby('Product.Name')['Sales'].sum().sort_values(ascending=False).head(15)
-        fig = px.bar(
-            x=top_products.values,
-            y=top_products.index,
-            orientation='h',
-            title="🏆 Top 15 Products by Sales"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Sub-category performance
-        subcat_sales = df.groupby('Sub.Category')['Sales'].sum().sort_values(ascending=False).head(10)
-        fig = px.bar(
-            x=subcat_sales.index,
-            y=subcat_sales.values,
-            title="📊 Top 10 Sub-Categories by Sales"
-        )
-        fig.update_xaxes(tickangle=45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Profitability analysis
-    st.subheader("💰 Profitability Analysis")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Profit margin by category
-        profit_margin_cat = df.groupby('Category')['Profit_Margin'].mean()
-        fig = px.bar(
-            x=profit_margin_cat.index,
-            y=profit_margin_cat.values,
-            title="📈 Average Profit Margin by Category",
-            color=profit_margin_cat.values,
-            color_continuous_scale="RdYlGn"
-        )
-        fig.update_layout(yaxis_title="Profit Margin")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Sales vs Profit scatter
-        fig = px.scatter(
-            df,
-            x='Sales',
-            y='Profit',
-            color='Category',
-            title="💹 Sales vs Profit by Category",
-            hover_data=['Product.Name']
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    segment_analysis.columns = ['Total Sales', 'Avg Sales', 'Transactions', 'Total Profit', 'Avg Profit', 'Customers']
+    st.dataframe(segment_analysis, use_container_width=True)
 
 def show_data_summary(df):
     """Halaman summary data"""
     st.header("📋 Data Summary")
     
-    # Key insights
-    st.subheader("🔍 Key Insights")
-    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.write("📊 **Dataset Overview:**")
-        st.write(f"• Total records: {len(df):,}")
-        st.write(f"• Date range: {df['Order.Date'].min().strftime('%Y-%m-%d')} to {df['Order.Date'].max().strftime('%Y-%m-%d')}")
-        st.write(f"• Unique customers: {df['Customer.ID'].nunique():,}")
-        st.write(f"• Unique products: {df['Product.ID'].nunique():,}")
-        st.write(f"• Missing values: {df.isnull().sum().sum()}")
+        st.subheader("📊 Dataset Overview")
+        st.write(f"**Total records:** {len(df):,}")
+        st.write(f"**Date range:** {df['Order.Date'].min().strftime('%Y-%m-%d')} to {df['Order.Date'].max().strftime('%Y-%m-%d')}")
+        st.write(f"**Unique customers:** {df['Customer.ID'].nunique():,}")
+        st.write(f"**Unique products:** {df['Product.ID'].nunique():,}")
+        st.write(f"**Missing values:** {df.isnull().sum().sum()}")
     
     with col2:
-        st.write("💰 **Business Metrics:**")
-        st.write(f"• Total sales: ${df['Sales'].sum():,.0f}")
-        st.write(f"• Total profit: ${df['Profit'].sum():,.0f}")
-        st.write(f"• Average profit margin: {df['Profit_Margin'].mean():.1%}")
-        st.write(f"• Loss transactions: {df['Is_Loss'].mean():.1%}")
-        st.write(f"• Average delivery time: {df['Delivery_Time'].mean():.1f} days")
+        st.subheader("💰 Business Metrics")
+        st.write(f"**Total sales:** ${df['Sales'].sum():,.0f}")
+        st.write(f"**Total profit:** ${df['Profit'].sum():,.0f}")
+        st.write(f"**Average profit margin:** {df['Profit_Margin'].mean():.1%}")
+        st.write(f"**Loss transactions:** {df['Is_Loss'].mean():.1%}")
+        st.write(f"**Average delivery time:** {df['Delivery_Time'].mean():.1f} days")
     
     # Data preview
     st.subheader("👀 Data Preview")
-    st.dataframe(df.head(10))
+    st.dataframe(df.head(10), use_container_width=True)
     
     # Statistical summary
     st.subheader("📈 Statistical Summary")
-    st.dataframe(df[['Sales', 'Profit', 'Quantity', 'Discount', 'Profit_Margin']].describe())
+    st.dataframe(df[['Sales', 'Profit', 'Quantity', 'Discount', 'Profit_Margin']].describe(), use_container_width=True)
 
-# Fungsi utama
 def main():
     # Header
-    st.markdown('<h1 class="main-header">📊 Superstore Analytics Dashboard</h1>', unsafe_allow_html=True)
+    st.title("📊 Superstore Analytics Dashboard")
+    
+    # File upload option
+    st.sidebar.markdown("### 📁 Data Source")
+    uploaded_file = st.sidebar.file_uploader(
+        "Upload CSV file", 
+        type=['csv'],
+        help="Upload your superstore.csv file or use sample data"
+    )
+    
+    use_sample = st.sidebar.checkbox("Use Sample Data", value=False)
     
     # Load data
     with st.spinner('Loading data...'):
-        df = load_and_process_data()
+        if use_sample:
+            df = create_sample_data()
+            df = load_and_process_data()  # Process the sample data
+            if df is None:
+                df = create_sample_data()
+            st.sidebar.success("✅ Using sample data")
+        elif uploaded_file is not None:
+            df = load_and_process_data(uploaded_file)
+            if df is not None:
+                st.sidebar.success("✅ File uploaded successfully")
+        else:
+            df = load_and_process_data()
+            if df is not None:
+                st.sidebar.success("✅ Data loaded from file")
     
+    # Check if data loaded successfully
     if df is None:
-        st.error("❌ Failed to load data. Please check if 'superstore.csv' exists.")
+        st.error("❌ No data available. Please:")
+        st.write("1. Upload a CSV file using the sidebar, or")
+        st.write("2. Check 'Use Sample Data' to see a demo, or") 
+        st.write("3. Make sure 'superstore.csv' exists in your repository")
         st.stop()
     
-    # Sidebar navigation
+    # Navigation
     st.sidebar.markdown("### 📋 Navigation")
     
     pages = [
         "📈 Overview",
-        "📊 Sales Analysis",
+        "📊 Sales Analysis", 
         "🎯 Customer Analysis",
-        "🛍️ Product Analysis",
         "📋 Data Summary"
     ]
     
@@ -394,17 +370,6 @@ def main():
     
     # Filters
     st.sidebar.markdown("### 🔧 Filters")
-    
-    # Date filter
-    min_date = df['Order.Date'].min().date()
-    max_date = df['Order.Date'].max().date()
-    
-    date_range = st.sidebar.date_input(
-        "Select Date Range",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date
-    )
     
     # Category filter
     categories = st.sidebar.multiselect(
@@ -421,24 +386,15 @@ def main():
     )
     
     # Apply filters
-    if len(date_range) == 2:
-        mask = (
-            (df['Order.Date'].dt.date >= date_range[0]) & 
-            (df['Order.Date'].dt.date <= date_range[1]) &
-            (df['Category'].isin(categories)) &
-            (df['Region'].isin(regions))
-        )
-        filtered_df = df[mask]
-    else:
-        filtered_df = df[
-            (df['Category'].isin(categories)) &
-            (df['Region'].isin(regions))
-        ]
+    filtered_df = df[
+        (df['Category'].isin(categories)) &
+        (df['Region'].isin(regions))
+    ]
     
     # Show data info
     st.sidebar.markdown("### 📊 Data Info")
     st.sidebar.write(f"Total records: {len(filtered_df):,}")
-    st.sidebar.write(f"Date range: {len(date_range)} days" if len(date_range) == 2 else "Date range: All")
+    st.sidebar.write(f"Filtered from: {len(df):,}")
     
     # Page routing
     if selected_page == "📈 Overview":
@@ -447,8 +403,6 @@ def main():
         show_sales_analysis(filtered_df)
     elif selected_page == "🎯 Customer Analysis":
         show_customer_analysis(filtered_df)
-    elif selected_page == "🛍️ Product Analysis":
-        show_product_analysis(filtered_df)
     elif selected_page == "📋 Data Summary":
         show_data_summary(filtered_df)
     
@@ -456,6 +410,5 @@ def main():
     st.markdown("---")
     st.markdown("Built with ❤️ using Streamlit | Superstore Analytics Dashboard")
 
-# Run the app
 if __name__ == "__main__":
     main()
