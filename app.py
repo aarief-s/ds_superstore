@@ -738,8 +738,7 @@ def show_sales_prediction(df, ml_data=None):
                fig = px.bar(
                    x=scenario_names,
                    y=scenario_sales,
-                   title="📊
-title="📊 Sales Prediction by Discount Scenario",
+      title="📊 Sales Prediction by Discount Scenario",
                    color=scenario_sales,
                    color_continuous_scale="Blues"
                )
