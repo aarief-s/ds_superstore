@@ -125,6 +125,4 @@ Berdasarkan analisis dan hasil model, rekomendasi strategis meliputi:
 7.  **Diskon Strategis:** Terapkan diskon secara strategis hanya pada produk atau momen yang terbukti meningkatkan profitabilitas secara keseluruhan
 8.  **Tingkatkan *Revenue per Unit*:** Fokus pada peningkatan rata-rata pendapatan per unit produk melalui strategi harga atau inisiatif *cross-selling/up-selling*
 
-
-
-
+**Demo** : https://ds-superstore.streamlit.app/
